@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ROKAF 정비 교육 시스템</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19; --panel: #161e2e; --accent: #2563eb; --text: #f1f5f9; --muted: #94a3b8; --border: #2d3748;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* 상단 네비게이션 - 4개 버튼 대응 */
+        header { background: var(--panel); display: flex; flex-direction: column; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); z-index: 10; flex-shrink: 0; }
+        .logo { font-weight: bold; font-size: 1.1rem; margin-bottom: 8px; color: #fff; }
+        nav { display: flex; gap: 5px; width: 100%; justify-content: center; }
+        nav button { background: none; border: 1px solid transparent; color: var(--muted); padding: 6px 8px; cursor: pointer; font-size: 0.85rem; border-radius: 4px; transition: 0.2s; flex: 1; max-width: 80px; text-align: center;}
+        nav button.active { color: white; background: var(--accent); font-weight: bold; }
+
+        /* 메인 영역 */
+        #main { flex: 1; position: relative; overflow: hidden; }
+        .page { display: none; width: 100%; height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 15px; }
+        .page.active { display: block; }
+        
+        /* 콘텐츠 레이아웃 */
+        .content-container { display: flex; flex-direction: column; gap: 15px; max-width: 800px; margin: 0 auto; }
+        
+        /* 3D 뷰어 축소형 */
+        .viewer-wrapper { background: #000; border-radius: 8px; border: 1px solid var(--border); overflow: hidden; position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 220px; flex-shrink: 0; }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        /* UI 컴포넌트 */
+        .desc-box { background: var(--panel); padding: 15px; border-radius: 8px; font-size: 0.9rem; color: var(--text); line-height: 1.6; border: 1px solid var(--border); }
+        .btn-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .item-btn { background: var(--panel); border: 1px solid var(--border); color: var(--muted); padding: 10px 15px; text-align: left; border-radius: 6px; cursor: pointer; font-size: 0.85rem; flex: 1 1 calc(50% - 8px); }
+        .item-btn.active, .item-btn:hover { border-color: var(--accent); color: white; background: #1e293b; }
+        
+        .link-btn { display: block; background: #16a34a; color: white; padding: 12px; text-align: center; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 0.9rem; border: none; margin-top: 10px; width: 100%; cursor: pointer;}
+        .inline-link { color: #60a5fa; text-decoration: underline; cursor: pointer; font-weight: bold; padding: 0 2px;}
+
+        /* 위키 및 댓글 */
+        .wiki-article { background: var(--panel); padding: 15px; border-radius: 8px; line-height: 1.7; border: 1px solid var(--border); font-size: 0.9rem; }
+        .comment-area { margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border); }
+        .comment-form { display: flex; gap: 8px; margin-bottom: 15px; }
+        .comment-form input { flex: 1; background: #0b0f19; border: 1px solid var(--border); padding: 10px; color: white; border-radius: 4px; font-size: 0.85rem; }
+        .comment-form button { background: var(--accent); border: none; color: white; padding: 0 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.85rem;}
+        .comment-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+        .comment-list li { background: var(--panel); padding: 12px; border-radius: 6px; font-size: 0.8rem; border: 1px solid var(--border); }
+        
+        /* 4페이지: AI 에이전트 전용 스타일 */
+        .ai-chat-box { display: flex; flex-direction: column; gap: 15px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 15px; min-height: 200px; }
+        .ai-response { font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; }
+        .ai-review-links { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+        .review-tag { background: #374151; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; border: 1px solid #4b5563; text-align: left; transition: 0.2s; }
+        .review-tag:hover { background: var(--accent); border-color: var(--accent); }
+        .ai-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+        .sug-chip { background: #1e293b; border: 1px solid var(--border); color: #60a5fa; padding: 6px 10px; border-radius: 20px; font-size: 0.75rem; cursor: pointer; }
+
+        /* PC 환경 우회 보정 */
+        @media (min-width: 768px) {
+            header { flex-direction: row; height: 50px; padding: 0 20px; }
+            .logo { margin-bottom: 0; }
+            nav { width: auto; gap: 10px; }
+            nav button { font-size: 0.9rem; padding: 6px 15px; max-width: none; }
+            .page { padding: 30px; }
+            .item-btn { flex: 0 1 auto; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">ROKAF 정비 교육</div>
+        <nav>
+            <button id="btn-p1" class="active" onclick="switchPage('p1')">도구</button>
+            <button id="btn-p2" onclick="switchPage('p2')">절차</button>
+            <button id="btn-p3" onclick="switchPage('p3')">Wiki</button>
+            <button id="btn-p4" onclick="switchPage('p4')">AI 상담</button>
+        </nav>
+    </header>
+
+    <div id="main">
+        <div id="p1" class="page active">
+            <div class="content-container">
+                <h3>도구 식별</h3>
+                <div class="btn-list">
+                    <button class="item-btn active" onclick="selectTool('speed', this)">스피드 핸들</button>
+                    <button class="item-btn" onclick="selectTool('box', this)">복스 렌치</button>
+                    <button class="item-btn" onclick="selectTool('torque', this)">토크 렌치</button>
+                </div>
+                <div class="viewer-wrapper"><canvas id="c-tool"></canvas></div>
+                <div class="info-panel">
+                    <div class="desc-box" id="tool-desc"></div>
+                    <button class="link-btn" id="tool-backlink">이 공구로 절차 훈련하기 ⚡</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="p2" class="page">
+            <div class="content-container">
+                <h3>작업 절차 시뮬레이션</h3>
+                <div class="btn-list">
+                    <button class="item-btn active" onclick="selectProc('aispod', this)">AIS POD 장착</button>
+                    <button class="item-btn" onclick="selectProc('inspect', this)">항공기 점검</button>
+                    <button class="item-btn" onclick="selectProc('m18', this)">18M 예시</button>
+                </div>
+                <div class="viewer-wrapper"><canvas id="c-proc"></canvas></div>
+                <div class="info-panel">
+                    <div class="desc-box" id="proc-desc"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="p3" class="page">
+            <div class="content-container">
+                <h3>정비 Wiki 커뮤니티</h3>
+                <div class="wiki-article">
+                    <h4>[노하우] AIS POD 고정 볼트 마모 방지</h4>
+                    <p>작업 가이드라인(T.O)에 따라 <span class="inline-link" onclick="switchPage('p2'); selectProc('aispod');">AIS POD 장착 작업</span>을 수행할 때, 볼트 마모(야마)가 자주 발생합니다.</p>
+                    <p>초기 체결 시 절대 무리하게 힘을 주지 말고, 먼저 <span class="inline-link" onclick="switchPage('p1'); selectTool('speed');">스피드 핸들</span>을 사용하여 부드럽게 가체결하십시오. 최종 마무리는 반드시 규정된 수치로 <span class="inline-link" onclick="switchPage('p1'); selectTool('torque');">토크 렌치</span>를 사용해야 안전합니다.</p>
+                </div>
+                <div class="comment-area">
+                    <div class="desc-box">
+                        <h5 style="margin-bottom:8px;">실무 피드백</h5>
+                        <div class="comment-form">
+                            <input type="text" id="comment-in" placeholder="현장 팁 입력...">
+                            <button onclick="addComment()">등록</button>
+                        </div>
+                        <ul class="comment-list" id="comment-list">
+                            <li><strong>박상사:</strong> 스피드핸들 사용 시 수평 유지가 제일 중요합니다.</li>
+                            <li><strong>김하사:</strong> 3D 화면이랑 링크가 바로 연결돼서 보기 편하네요.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="p4" class="page">
+            <div class="content-container">
+                <h3>지능형 정비 AI 에이전트</h3>
+                <div class="desc-box" style="font-size:0.85rem; color:var(--muted);">
+                    수년간 축적된 정비 Wiki 데이터셋, T.O 지침, 공구 및 절차 마스터 데이터를 종합하여 최적의 솔루션을 제공합니다.
+                </div>
+                
+                <div class="comment-form">
+                    <input type="text" id="ai-prompt" placeholder="질문 입력 (예: AIS POD 장착, 볼트 마모 예방)..." onkeypress="if(event.keyCode==13) askAi();">
+                    <button onclick="askAi()" style="background:#16a34a;">질문</button>
+                </div>
+
+                <div class="ai-suggestions">
+                    <span class="sug-chip" onclick="clickSug('AIS POD 장착 절차와 공구 알려줘')">#AIS POD 공구</span>
+                    <span class="sug-chip" onclick="clickSug('볼트 나사산 마모를 예방하려면?')">#볼트 마모 방지</span>
+                    <span class="sug-chip" onclick="clickSug('정기 18Month 검사는 무엇을 하나요?')">#18Month 검사</span>
+                </div>
+
+                <div class="ai-chat-box">
+                    <div class="ai-response" id="ai-out">질문을 입력하시면 도구, 절차, 위키 데이터를 분석하여 답변과 복습 링크를 제공합니다.</div>
+                    <div class="ai-review-links" id="ai-links" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 데이터 정의 ---
+        const tools = {
+            speed: { t: "스피드 핸들", d: "볼트/너트를 신속하게 회전시켜 가체결하거나 분해할 때 사용하는 크랭크형 공구.", link: "aispod" },
+            box: { t: "복스 렌치", d: "6각 볼트 머리를 감싸 강한 힘으로 고정/해제 시 사용.", link: "inspect" },
+            torque: { t: "토크 렌치", d: "기술도서(T.O) 규정 수치에 맞춰 정밀하게 볼트를 조이는 계측 공구.", link: "m18" }
+        };
+
+        const procs = {
+            aispod: { t: "AIS POD 장착 작업", d: "파일런에 장비를 수평 정렬 후 결합.<br>• <b>공구 연동</b>: <span class='inline-link' onclick='switchPage(\"p1\"); selectTool(\"speed\");'>스피드 핸들</span>(가체결), <span class='inline-link' onclick='switchPage(\"p1\"); selectTool(\"torque\");'>토크 렌치</span>(최종)" },
+            inspect: { t: "항공기 정밀 점검", d: "무장 장착대 균열 유무 육안 점검.<br>• <b>공구 연동</b>: <span class='inline-link' onclick='switchPage(\"p1\"); selectTool(\"box\");'>복스 렌치</span>" },
+            m18: { t: "18Month 정기 검사", d: "내부 무장 계통 분해 정밀 검사 항목 예시.<br>• <b>공구 연동</b>: <span class='inline-link' onclick='switchPage(\"p1\"); selectTool(\"torque\");'>토크 렌치</span>" }
+        };
+
+        // --- Three.js 엔진 설정 ---
+        let s1, c1, r1, g1, s2, c2, r2, g2, bolt;
+        let curProc = 'aispod';
+
+        function init3D() {
+            const clearMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6, roughness: 0.3 });
+            
+            const v1 = document.getElementById('c-tool').parentElement;
+            s1 = new THREE.Scene();
+            c1 = new THREE.PerspectiveCamera(45, v1.clientWidth / v1.clientHeight, 0.1, 100); c1.position.set(0, 1.5, 3);
+            r1 = new THREE.WebGLRenderer({ canvas: document.getElementById('c-tool'), antialias: true }); r1.setSize(v1.clientWidth, v1.clientHeight); r1.setPixelRatio(window.devicePixelRatio);
+            const ctrl1 = new THREE.OrbitControls(c1, r1.domElement); ctrl1.enableDamping = true;
+            g1 = new THREE.Group(); s1.add(g1); s1.add(new THREE.AmbientLight(0xffffff, 0.8), new THREE.DirectionalLight(0xffffff, 0.6));
+
+            const v2 = document.getElementById('c-proc').parentElement;
+            s2 = new THREE.Scene();
+            c2 = new THREE.PerspectiveCamera(45, v2.clientWidth / v2.clientHeight, 0.1, 100); c2.position.set(2, 2, 3);
+            r2 = new THREE.WebGLRenderer({ canvas: document.getElementById('c-proc'), antialias: true }); r2.setSize(v2.clientWidth, v2.clientHeight); r2.setPixelRatio(window.devicePixelRatio);
+            const ctrl2 = new THREE.OrbitControls(c2, r2.domElement); ctrl2.enableDamping = true;
+            g2 = new THREE.Group(); s2.add(g2); s2.add(new THREE.AmbientLight(0xffffff, 0.7), new THREE.DirectionalLight(0xffffff, 0.8));
+
+            const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 0.5), clearMat); base.position.y = 0.5;
+            const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.4), new THREE.MeshStandardMaterial({ color: 0x64748b })); pod.rotation.z = Math.PI / 2; pod.position.y = -0.2;
+            bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2), new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.8 })); bolt.position.set(0, 0.2, 0);
+            g2.add(base, pod, bolt);
+
+            const clock = new THREE.Clock();
+            function loop() {
+                requestAnimationFrame(loop);
+                const t = clock.getElapsedTime();
+                if (g1) g1.rotation.y += 0.005;
+                if (bolt) {
+                    if (curProc === 'aispod') { bolt.position.y = 0.2 + Math.sin(t * 3) * 0.08; bolt.rotation.y += 0.05; }
+                    else if (curProc === 'inspect') { g2.rotation.y = Math.sin(t * 0.5) * 0.3; bolt.position.y = 0.2; }
+                    else if (curProc === 'm18') { bolt.position.x = Math.sin(t * 40) * 0.008; bolt.position.y = 0.2;}
+                }
+                ctrl1.update(); ctrl2.update();
+                r1.render(s1, c1); r2.render(s2, c2);
+            }
+            loop();
+            window.addEventListener('resize', syncCanvasSize);
+        }
+
+        // --- 제어 함수 ---
+        function selectTool(key, btn) {
+            const buttons = document.querySelectorAll('#p1 .item-btn');
+            buttons.forEach(b => b.classList.remove('active'));
+            if(btn) btn.classList.add('active');
+            else {
+                const idx = Object.keys(tools).indexOf(key);
+                if(buttons[idx]) buttons[idx].classList.add('active');
+            }
+            const data = tools[key];
+            document.getElementById('tool-desc').innerHTML = `<strong>${data.t}</strong>: ${data.d}`;
+            document.getElementById('tool-backlink').onclick = () => { switchPage('p2'); selectProc(data.link); };
+
+            while(g1.children.length > 0) g1.remove(g1.children[0]);
+            const mMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.2 });
+            if (key === 'speed') {
+                const r = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.8), mMat);
+                const h = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.02), mMat); h.position.y = 0.4; g1.add(r, h);
+            } else if (key === 'box') {
+                const r = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.02), mMat);
+                const hd = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.06, 12), mMat); hd.position.y = 0.3; hd.rotation.x = Math.PI/2; g1.add(r, hd);
+            } else if (key === 'torque') {
+                const r = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9), mMat);
+                const g = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2), new THREE.MeshStandardMaterial({ color: 0x111111 })); g.position.y = -0.35;
+                const box = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), mMat); box.position.y = 0.4; g1.add(r, g, box);
+            }
+        }
+
+        function selectProc(key, btn) {
+            curProc = key;
+            const buttons = document.querySelectorAll('#p2 .item-btn');
+            buttons.forEach(b => b.classList.remove('active'));
+            if(btn) btn.classList.add('active');
+            else {
+                const idx = Object.keys(procs).indexOf(key);
+                if(buttons[idx]) buttons[idx].classList.add('active');
+            }
+            const data = procs[key];
+            document.getElementById('proc-desc').innerHTML = `<strong>${data.t}</strong><br><p style="margin-top:5px; color:var(--muted);">${data.d}</p>`;
+            if(bolt) bolt.material.color.setHex(key === 'aispod' ? 0xf59e0b : key === 'inspect' ? 0x10b981 : 0xef4444);
+        }
+
+        function switchPage(id) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            
+            let btnId = id === 'p1' ? 'btn-p1' : id === 'p2' ? 'btn-p2' : id === 'p3' ? 'btn-p3' : 'btn-p4';
+            const btn = document.getElementById(btnId);
+            if(btn) btn.classList.add('active');
+
+            syncCanvasSize();
+            document.getElementById(id).scrollTop = 0;
+        }
+
+        function syncCanvasSize() {
+            [ { r:r1, c:c1, id:'c-tool' }, { r:r2, c:c2, id:'c-proc' } ].forEach(item => {
+                const canvas = document.getElementById(item.id);
+                if(!canvas) return;
+                const wrapper = canvas.parentElement;
+                const w = wrapper.clientWidth; const h = wrapper.clientHeight;
+                if(w === 0 || h === 0) return;
+                item.c.aspect = w / h; item.c.updateProjectionMatrix(); item.r.setSize(w, h);
+            });
+        }
+
+        function addComment() {
+            const input = document.getElementById('comment-in');
+            if(!input.value.trim()) return;
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>익명:</strong> ${input.value}`;
+            document.getElementById('comment-list').prepend(li);
+            input.value = '';
+        }
+
+        // --- 4페이지: 지능형 모의 AI 에이전트 오퍼레이션 ---
+        function clickSug(text) {
+            document.getElementById('ai-prompt').value = text;
+            askAi();
+        }
+
+        function askAi() {
+            const prompt = document.getElementById('ai-prompt').value.trim();
+            const out = document.getElementById('ai-out');
+            const linksBox = document.getElementById('ai-links');
+            
+            if(!prompt) return;
+
+            let responseText = "";
+            let reviewItems = [];
+
+            // 키워드 매칭 스크리닝 연산
+            if(prompt.includes('AIS') || prompt.includes('포드') || prompt.includes('공구')) {
+                responseText = `💡 [종합 지침 - AIS POD 무장 장착 공구 매칭]\n\n기술도서(T.O) 및 베테랑 위키 노하우에 따르면, AIS POD 장/탈착 시 핵심은 '순차적 공구 적용'입니다.\n1. 초기 정렬 후 고정할 때는 **스피드 핸들**을 사용하여 나사산 부하 없이 빠르게 체결해야 합니다.\n2. 최종 마무리는 규격 강도 확보를 위해 반드시 **토크 렌치**를 조절하여 규정치 조임을 완수해야 오버토크를 막을 수 있습니다.`;
+                reviewItems = [
+                    { name: "🔧 스피드 핸들 3D 구조 확인", action: () => { switchPage('p1'); selectTool('speed'); } },
+                    { name: "🔧 토크 렌치 3D 구조 확인", action: () => { switchPage('p1'); selectTool('torque'); } },
+                    { name: "🚀 AIS POD 장착 시뮬레이션 복습", action: () => { switchPage('p2'); selectProc('aispod'); } }
+                ];
+            } else if(prompt.includes('마모') || prompt.includes('야마') || prompt.includes('방지')) {
+                responseText = `⚠️ [위키 커뮤니티 추천 팁 - 볼트 마모 방지]\n\n베테랑 박상사의 현장 피드백에 따르면 동절기 가혹 환경에서 하부 파일런 조임 시 축선(수평)이 어긋난 상태로 힘을 가해 야마가 나는 경우가 다수 보고되었습니다.\n- 대책: 초반 도입부 체결에 전동 툴이나 복스를 쓰지 말고, **스피드 핸들**을 수평으로 유지하여 손끝 감각으로 가체결 후 마무리 단계에서만 **토크 렌치**를 연동하십시오.`;
+                reviewItems = [
+                    { name: "🔧 스피드 핸들 파트 매칭", action: () => { switchPage('p1'); selectTool('speed'); } },
+                    { name: "📖 정비 Wiki 현장 노하우 원문 보기", action: () => { switchPage('p3'); } }
+                ];
+            } else if(prompt.includes('18') || prompt.includes('m18') || prompt.includes('주기')) {
+                responseText = `📅 [주기 검사 연계 지침 - 18Month 정기 검사]\n\n18개월 주기 무장 장착대 정밀 분해 검사 시에는 내부 하우징 부식 및 인장력 약화 여부를 교차 검증해야 합니다. 이 작업 역시 규정 강도가 가혹하므로 고성능 **토크 렌치** 계측 데이터를 필히 기술도서에 기록해야 합니다.`;
+                reviewItems = [
+                    { name: "⚙️ 18Month 시뮬레이션 확인", action: () => { switchPage('p2'); selectProc('m18'); } },
+                    { name: "🔧 토크 렌치 매뉴얼 이동", action: () => { switchPage('p1'); selectTool('torque'); } }
+                ];
+            } else {
+                responseText = `❓ 입력하신 프롬프트에 대한 정확한 정비 데이터를 찾지 못했습니다.\n\n[추천 질문 키워드]\n- 'AIS POD 장착 절차와 공구 알려줘'\n- '볼트 나사산 마모를 예방하려면?'\n- '정기 18Month 검사 지침'`;
+                reviewItems = [];
+            }
+
+            // 화면 반영
+            out.innerHTML = responseText.replace(/\n/g, '<br>');
+            
+            // 복습 링크 동적 렌더링
+            if(reviewItems.length > 0) {
+                linksBox.innerHTML = `<strong style="font-size:0.8rem; color:var(--accent);">🎯 답변 연관 개념 3D 복습 링크:</strong>`;
+                reviewItems.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.className = 'review-tag';
+                    btn.innerText = item.name;
+                    btn.onclick = item.action;
+                    linksBox.appendChild(btn);
+                });
+                linksBox.style.display = 'flex';
+            } else {
+                linksBox.style.display = 'none';
+            }
+        }
+
+        window.onload = () => {
+            init3D();
+            syncCanvasSize();
+            selectTool('speed');
+            selectProc('aispod');
+        };
+    </script>
+</body>
+</html>
